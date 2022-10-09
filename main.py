@@ -9,9 +9,10 @@ from classes import Vec2
 # settings
 WIDTH: int = 1600
 HEIGHT: int = 800
-NODE_RANGE: float = 100
-NUMBER_NODES: int = 200
+NODE_RANGE: float = 200
+NUMBER_NODES: int = 400
 DRAW_ALL_CONNECTIONS: bool = False
+SLEEP_TIME: float = 0.01
 
 
 def generate_nodes(n) -> list[Vec2]:
@@ -122,7 +123,7 @@ def main():
 
             for r_node in connections:
                 if r_node not in to_avoid:
-                    time.sleep(.01)
+                    time.sleep(SLEEP_TIME)
                     path.append(r_node)
 
                     redraw()
@@ -141,11 +142,56 @@ def main():
 
             return path, False
 
+        def shorten_path(path: list[Vec2]) -> list[Vec2]:
+            """
+            shorten a given path
+            """
+            if len(path) < 3:
+                return path
+
+            print(type(path), len(path))
+            node = path[0]
+
+            # filter all nodes below
+            better_connections = list(reversed(path[2:]))
+            # remove all out-of-range nodes
+            better_connections = list(filter(lambda n: (node - n).length <= NODE_RANGE, better_connections))
+
+            if better_connections:
+                # choose the highest value node
+                r_node = better_connections[0]
+
+                # remove all not-needed nodes
+                try:
+                    new_path = [node] + path.copy()[path.index(r_node):]
+
+                except ValueError:
+                    print(r_node.xy, [p.xy for p in path])
+                    raise
+
+                print(len(path), len(new_path))
+                redraw()
+                draw_path(new_path)
+                pg.display.flip()
+
+                path = new_path
+
+            try:
+                time.sleep(SLEEP_TIME)
+                return [node] + shorten_path(path[1:])
+
+            except RecursionError:
+                print("recursion error")
+                return path
+
         redraw()
         connection, success = calculate_path(to_connect[0], to_connect[1])
 
         redraw()
         if success:
+            # try to shorten path
+            connection = shorten_path(connection)
+            print("shortened")
             draw_path(connection)
         pg.display.flip()
 
