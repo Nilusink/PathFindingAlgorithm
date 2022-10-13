@@ -217,7 +217,7 @@ class AllKnowing:
         calculate the path
         """
         self.request_all(self.connections, origin)
-        self.request_all(self.connections_from_target, target)
+        self.request_from_target(target, origin, self.connections_from_target)
 
         if target not in self.connections:
             return  # target was not found
@@ -225,7 +225,7 @@ class AllKnowing:
         # calculate path
         def node_finder(origin: Vec2, target: Vec2, path: list[Vec2], ignore: list[Vec2]) -> list[Vec2] | None:
             ignore.append(origin)
-            this_node = self.connections_from_target[origin]
+            this_node = self.connections_from_target[origin] if origin in self.connections_from_target else self.connections[origin]
 
             connections = this_node["connections"]
 
@@ -233,7 +233,7 @@ class AllKnowing:
                 return path + [target]
 
             # remove already pinged nodes
-            connections = list(filter(lambda e: e not in ignore, connections))
+            connections = list(filter(lambda e: (e not in ignore) and (e in self.connections_from_target), connections))
 
             if len(connections) < 1:
                 return None
@@ -252,6 +252,34 @@ class AllKnowing:
             return node_finder(next_node, target, path, ignore)
 
         return node_finder(origin, target, [origin], [])
+
+    def request_from_target(self, target: Vec2, origin: Vec2, to_append: dict, max_iterations: int = 300) -> None:
+        layers: dict[int, list[Vec2]] = {
+            0: [target]
+        }
+        all_points: list[Vec2] = [target]
+        current_layer: int = 0
+        while current_layer < max_iterations:
+            if origin in layers[current_layer]:
+                break
+
+            layers[current_layer + 1] = []
+            for node in layers[current_layer]:
+                new_nodes = self._connection_requester(node)
+                new_nodes = list(filter(lambda e: e not in all_points, new_nodes))
+                layers[current_layer + 1] += new_nodes
+                all_points += new_nodes
+
+            current_layer += 1
+
+        for layer in layers:
+            nodes = layers[layer]
+            for node in nodes:
+                to_append[node] = {
+                    "name": nodes,
+                    "hops": layer,
+                    "connections": self._connection_requester(node)
+                }
 
     def request_all(self, to_append: dict, origin: Vec2, ignore: list[Vec2] = ..., n=0) -> None:
         """

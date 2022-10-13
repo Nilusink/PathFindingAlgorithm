@@ -198,11 +198,14 @@ def main():
             p2 = calc(calculator.calculate_path_2, (0, 255, 0))
             t2 = time.perf_counter()
 
-            draw_path(p1, (255, 0, 0))
-            draw_path(p2, (0, 255, 0))
+            if p1:
+                draw_path(p1, (255, 0, 0))
+
+            if p2:
+                draw_path(p2, (0, 255, 0))
 
             # append times
-            d1 = d2 = d3 = None
+            d1 = d2 = None
             if p1 is not None:
                 d1 = t1 - ts
                 times[0] += d1
@@ -210,6 +213,9 @@ def main():
             if p2 is not None:
                 d2 = t2 - t1
                 times[1] += d2
+
+            if not p1 or not p2:
+                return
 
             shortest = sorted([p1, p2], key=lambda e: len(e))[0]
             draw_path(shortest, (255, 255, 255))
@@ -221,8 +227,8 @@ def main():
                     with open("results.csv", "a") as out:
                         writer = csv.writer(out)
                         writer.writerow([
-                            d1, int(len(p1) <= shortest_l),
-                            d2, int(len(p2) <= shortest_l),
+                            d1, int(len(p1) == shortest_l and not int(len(p1)) == int(len(p2))),
+                            d2, int(len(p2) == shortest_l and not int(len(p2)) == int(len(p1))),
                         ])
 
             if shortest == p1:
@@ -262,7 +268,7 @@ def main():
                                 while res:
                                     res = recalculate()
 
-                                raise SystemExit
+                                # raise SystemExit
 
                             case pg.K_ESCAPE:
                                 raise SystemExit
