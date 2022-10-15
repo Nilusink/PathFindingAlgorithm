@@ -10,6 +10,7 @@ DRAW_STEPS: bool = False
 class Node(TypedDict):
     name: Vec2
     hops: int
+    parent_chain: list["Node"]
     connections: list[Vec2]
 
 
@@ -279,6 +280,152 @@ class AllKnowing:
                     "name": nodes,
                     "hops": layer,
                     "connections": self._connection_requester(node)
+                }
+
+    def request_all(self, to_append: dict, origin: Vec2, ignore: list[Vec2] = ..., n=0) -> None:
+        """
+        request all possible node connections
+        """
+        if ignore is ...:
+            ignore = []
+
+        ignore.append(origin)
+        if origin not in self.visible_nodes:
+            self.visible_nodes.append(origin)
+
+        points = self._connection_requester(origin)
+
+        for point in points:
+            if point not in self.visible_nodes:
+                self.visible_nodes.append(point)
+
+            if point not in to_append:
+                to_append[point] = {
+                    "name": point,
+                    "hops": n+1,
+                    "connections": [],
+                }
+        if origin in to_append:
+            to_append[origin]["connections"] = points
+
+        # request all points from each point
+        for point in points:
+            if point not in ignore:
+                self.request_all(to_append, point, ignore, n+1)
+
+
+class AllKnowing2:
+    points: list[Vec2]
+    connections: dict[Vec2, Node]
+    connections_from_target: dict[Vec2, Node]
+
+    def __init__(
+            self,
+            node_connections: dict[Vec2, list],
+            visible_nodes: list[Vec2],
+            sleep_time: float,
+            redraw_func: Callable,
+            draw_path_func: Callable,
+            request_node_connections: Callable,
+
+    ):
+        self._draw_path_func = draw_path_func
+        self._connection_requester = request_node_connections
+        self.visible_nodes = visible_nodes
+        self._redraw_func = redraw_func
+
+        self.connections_from_target = {}
+        self.connections = {}
+        self.points = []
+
+    def calculate(self, origin: Vec2, target: Vec2) -> list[Vec2] | None:
+        """
+        calculate the path
+        """
+        self.request_all(self.connections, origin)
+        self.request_from_target(target, origin, self.connections_from_target)
+
+        if target not in self.connections:
+            return  # target was not found
+
+        def distance_from_parent_chain(parent_chain: list[Node]) -> float:
+            """
+            calculate the distance to target based on a chain of nodes
+            """
+            s = 0
+            for i in range(len(parent_chain)-1):
+                s += (parent_chain[i]["name"] - parent_chain[i+1]["name"]).length
+
+            return s
+
+        # calculate path
+        def node_finder(origin: Vec2, target: Vec2, path: list[Vec2], ignore: list[Vec2]) -> list[Vec2] | None:
+            ignore.append(origin)
+            this_node = self.connections_from_target[origin] if origin in self.connections_from_target else self.connections[origin]
+
+            connections = this_node["connections"]
+
+            if target in connections:
+                return path + [target]
+
+            # remove already pinged nodes
+            connections = list(filter(lambda e: (e not in ignore) and (e in self.connections_from_target), connections))
+
+            if len(connections) < 1:
+                return None
+
+            # sort by furthest along the line
+            connections = list(sorted(connections, key=lambda e: distance_from_parent_chain(self.connections_from_target[e]["parent_chain"])))
+
+            next_node = connections[0]
+
+            path.append(next_node)
+
+            self._redraw_func()
+            self._draw_path_func(path)
+            pg.display.flip()
+
+            return node_finder(next_node, target, path, ignore)
+
+        return node_finder(origin, target, [origin], [])
+
+    def request_from_target(self, target: Vec2, origin: Vec2, to_append: dict, max_iterations: int = 300) -> None:
+        layers: dict[int, list[Node]] = {
+            0: [{
+                "name": target,
+                "hops": 0,
+                "parent_chain": [],
+            }]
+        }
+        all_points: list[Vec2] = [target]
+        current_layer: int = 0
+        while current_layer < max_iterations:
+            if origin in [n["name"] for n in layers[current_layer]]:
+                break
+
+            layers[current_layer + 1] = []
+            for node in layers[current_layer]:
+                new_nodes = self._connection_requester(node["name"])
+                new_nodes = list(filter(lambda e: e not in all_points, new_nodes))
+                all_points += new_nodes
+
+                new_nodes = [{
+                    "name": n_node,
+                    "hops": current_layer + 1,
+                    "parent_chain": node["parent_chain"] + [node],
+                } for n_node in new_nodes]
+                layers[current_layer + 1] += new_nodes
+
+            current_layer += 1
+
+        for layer in layers:
+            nodes = layers[layer]
+            for node in nodes:
+                to_append[node["name"]] = {
+                    "name": node["name"],
+                    "hops": layer,
+                    "parent_chain": node["parent_chain"],
+                    "connections": self._connection_requester(node["name"]),
                 }
 
     def request_all(self, to_append: dict, origin: Vec2, ignore: list[Vec2] = ..., n=0) -> None:

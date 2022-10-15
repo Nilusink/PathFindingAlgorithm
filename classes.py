@@ -158,11 +158,12 @@ class Vec2:
         return np.sqrt(self.x**2 + self.y**2)
 
     def __repr__(self):
-        return f"<\n" \
-               f"\tVec2:\n" \
-               f"\tx:{self.x}\ty:{self.y}\n" \
-               f"\tangle:{self.angle}\tlength:{self.length}\n" \
-               f">"
+        # return f"<\n" \
+        #        f"\tVec2:\n" \
+        #        f"\tx:{self.x}\ty:{self.y}\n" \
+        #        f"\tangle:{self.angle}\tlength:{self.length}\n" \
+        #        f">"
+        return f"V({self.x}, {self.y})"
 
     # static methods.
     # creation of new instances

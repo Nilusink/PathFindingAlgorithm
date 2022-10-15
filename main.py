@@ -7,8 +7,7 @@ import csv
 
 
 from classes import Vec2
-from path_finders import PathCalculator, AllKnowing
-
+from path_finders import AllKnowing, AllKnowing2
 
 # settings
 WIDTH: int = 1920
@@ -18,6 +17,7 @@ NUMBER_NODES: int = 500
 DRAW_ALL_CONNECTIONS: bool = False
 WRITE_DATA: bool = True
 SLEEP_TIME: float = .0
+LOOP: bool = True
 
 
 def generate_nodes(n) -> list[Vec2]:
@@ -157,13 +157,13 @@ def main():
                 print("recursion error")
                 return path
 
-        calculator = PathCalculator(
-            node_connections,
-            visible_nodes,
-            SLEEP_TIME,
-            redraw,
-            draw_path,
-        )
+        # calculator = PathCalculator(
+        #     node_connections,
+        #     visible_nodes,
+        #     SLEEP_TIME,
+        #     redraw,
+        #     draw_path,
+        # )
 
         finder = AllKnowing(
             node_connections,
@@ -171,7 +171,16 @@ def main():
             SLEEP_TIME,
             redraw,
             draw_path,
-            lambda key: node_connections[key]
+            lambda key: node_connections[key],
+        )
+
+        finder2 = AllKnowing2(
+            node_connections,
+            visible_nodes,
+            SLEEP_TIME,
+            redraw,
+            draw_path,
+            lambda key: node_connections[key],
         )
 
         def calc(func: Callable, color):
@@ -190,12 +199,41 @@ def main():
             pg.display.flip()
             return connection
 
+        def path_length(path) -> float:
+            """
+            calculates the length of a path
+            """
+
+            s = 0
+            for j in range(len(path) - 1):
+                s += (path[j] - path[j - 1]).length
+
+            return s
+
+        def winner(paths) -> tuple[list[int], float]:
+            """
+            determines which of the paths is the best
+            """
+            distances = [0] * len(paths)
+            for i in range(len(paths)):
+                current_path = paths[i]
+                distances[i] += path_length(current_path)
+
+            shortest = min(distances)
+            # check if multiple wins
+
+            out = []
+            for i in range(len(distances)):
+                if distances[i] == shortest:
+                    out.append(i)
+            return out, shortest
+
         def test():
             redraw()
             ts = time.perf_counter()
             p1 = calc(finder.calculate, (255, 0, 0))
             t1 = time.perf_counter()
-            p2 = calc(calculator.calculate_path_2, (0, 255, 0))
+            p2 = calc(finder2.calculate, (0, 255, 0))
             t2 = time.perf_counter()
 
             if p1:
@@ -217,18 +255,21 @@ def main():
             if not p1 or not p2:
                 return
 
-            shortest = sorted([p1, p2], key=lambda e: len(e))[0]
+            # winner declaration
+            all_paths = [p1, p2]
+            winner_ids, shortest_l = winner(all_paths)
+
+            shortest = all_paths[winner_ids[0]]
+
             draw_path(shortest, (255, 255, 255))
 
             if WRITE_DATA:
                 if all([d1 is not None, d2 is not None]):
-                    shortest_l = len(shortest)
-
                     with open("results.csv", "a") as out:
                         writer = csv.writer(out)
                         writer.writerow([
-                            d1, int(len(p1) == shortest_l and not int(len(p1)) == int(len(p2))),
-                            d2, int(len(p2) == shortest_l and not int(len(p2)) == int(len(p1))),
+                            d1, int(all_paths.index(p1) in winner_ids),
+                            d2, int(all_paths.index(p2) in winner_ids),
                         ])
 
             if shortest == p1:
@@ -251,7 +292,7 @@ def main():
                     match event.key:
                         case pg.K_ESCAPE:
                             return False
-        return True
+        return LOOP
 
     try:
         while True:
