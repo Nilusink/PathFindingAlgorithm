@@ -165,6 +165,9 @@ class Vec2:
         #        f">"
         return f"V({self.x}, {self.y})"
 
+    def __hash__(self) -> int:
+        return hash((self.x, self.y))
+
     # static methods.
     # creation of new instances
     @staticmethod

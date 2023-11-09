@@ -1,37 +1,95 @@
+from concurrent.futures import ProcessPoolExecutor
+from threading import Thread
 from typing import Callable
 from random import sample
 import pygame as pg
 import numpy as np
 import time
 import csv
+import sys
 
 
 from classes import Vec2
 from path_finders import AllKnowing, AllKnowing2
 
+
 # settings
-WIDTH: int = 1920
-HEIGHT: int = 1080
+WIDTH: int = 2560
+HEIGHT: int = 1440
 NODE_RANGE: float = 150
 NUMBER_NODES: int = 500
-DRAW_ALL_CONNECTIONS: bool = False
+DRAW_ALL_CONNECTIONS: bool = True
 WRITE_DATA: bool = True
 SLEEP_TIME: float = .0
-LOOP: bool = True
+LOOP: bool = False
+THREADS: int = 100
 
 
-def generate_nodes(n) -> list[Vec2]:
+# set recursion limit
+sys.setrecursionlimit(NUMBER_NODES**2)
+
+
+def generate_nodes(n, n_threads: int = 1) -> list[Vec2]:
     """
     generate the nodes to test the path finding algorythm
 
     :param n: number of nodes
+    :param n_threads: the number of threads to use
     """
-    xs = np.random.randint(0, WIDTH, n)
-    ys = np.random.randint(0, HEIGHT, n)
+    per_thread = n // n_threads
+    threads: list[Thread] = []
+    nodes: list[Vec2] = []
 
-    nodes: list[Vec2] = [Vec2.from_cartesian(xs[i], ys[i]) for i in range(n)]
+    def _generate_nodes(_n):
+        xs = np.random.randint(0, WIDTH, _n)
+        ys = np.random.randint(0, HEIGHT, _n)
+
+        for i in range(_n):
+            nodes.append(Vec2.from_cartesian(xs[i], ys[i]))
+
+    # start generation threads
+    for _ in range(n_threads-1):
+        threads.append(Thread(target=_generate_nodes, args=[per_thread]))
+        threads[-1].start()
+
+    # last thread per_thread + rest
+    threads.append(Thread(
+        target=_generate_nodes,
+        args=[n - per_thread * (n_threads-1)]
+    ))
+    threads[-1].start()
+
+    # wait for threads
+    for t in threads:
+        t.join()
 
     return nodes
+
+
+def connections_for_nodes(nodes_to_handle: list[Vec2], nnodes: list[Vec2]):
+    nnode_connections: dict[int, list] = {}
+    ppaths: list[set[Vec2, Vec2]] = []
+
+    for node in nodes_to_handle:
+        in_range: list[Vec2] = []
+
+        # get all nodes in range
+        for other_node in nnodes:
+            if not other_node == node:
+                # check if node is in range
+                if (node - other_node).length <= NODE_RANGE:
+                    in_range.append(other_node)
+
+        nnode_connections[hash(node)] = in_range
+
+        # append to paths
+        for other_node in in_range:
+            pair: set[Vec2, Vec2] = {node, other_node}
+
+            if pair not in ppaths:
+                ppaths.append(pair)
+
+    return nnode_connections, ppaths
 
 
 def main():
@@ -43,37 +101,55 @@ def main():
     screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
     clock = pg.time.Clock()
 
+    pool = ProcessPoolExecutor()
+
     def recalculate():
         """
         generate new nodes and redraw on screen
         """
-        nodes = generate_nodes(NUMBER_NODES)
+        s = time.perf_counter()
+        nodes = generate_nodes(NUMBER_NODES, 1)
+        print(f"generated: {time.perf_counter() - s}s")
 
         # choose two nodes that need to be connected
         to_connect: list[Vec2] = sample(nodes, 2)
-        visible_nodes: list[Vec2] = [to_connect[0]]
+        visible_nodes: list[Vec2] = to_connect.copy()
 
         # calculate paths
         paths: list[set[Vec2, Vec2]] = []
-        node_connections: dict[Vec2, list] = {}
-        for node in nodes:
-            in_range: list[Vec2] = []
+        node_connections: dict[int, list] = {}
+        s = time.perf_counter()
 
-            # get all nodes in range
-            for other_node in nodes:
-                if not other_node == node:
-                    # check if node is in range
-                    if (node - other_node).length <= NODE_RANGE:
-                        in_range.append(other_node)
+        per_thread = len(nodes) // THREADS
+        futures: list = []
 
-            node_connections[node] = in_range
+        # start generation threads
+        for n_thread in range(THREADS - 1):
+            start = per_thread * n_thread
+            end = per_thread * (n_thread + 1)
+            if end - start < 1:
+                continue
 
-            # append to paths
-            for other_node in in_range:
-                pair: set[Vec2, Vec2] = {node, other_node}
+            futures.append(pool.submit(
+                connections_for_nodes,
+                nodes[start:end],
+                nodes
+            ))
 
-                if pair not in paths:
-                    paths.append(pair)
+        # last thread per_thread + rest
+        futures.append(pool.submit(
+            connections_for_nodes,
+            nodes[per_thread * (THREADS-1):],
+            nodes
+        ))
+
+        # wait for threads
+        for f in futures:
+            n, p = f.result()
+            node_connections.update(n)
+            paths.extend(p)
+
+        print(f"connections took {time.perf_counter() - s}s")
 
         def redraw():
             screen.fill((0, 0, 0))
@@ -84,7 +160,9 @@ def main():
                     connection = list(connection)
 
                     # how good the connection is based on distance
-                    quality: float = 1 - ((connection[0] - connection[1]).length / NODE_RANGE)
+                    quality = 1 - ((
+                                           connection[0] - connection[1]
+                                   ).length / NODE_RANGE)
 
                     col = (255 * (1 - quality), 255 * quality, 0)
                     pg.draw.line(screen, col, connection[0].xy, connection[1].xy)
@@ -165,13 +243,16 @@ def main():
         #     draw_path,
         # )
 
+        def request_nodes(key):
+            return node_connections[hash(key)]
+
         finder = AllKnowing(
             node_connections,
             visible_nodes,
             SLEEP_TIME,
             redraw,
             draw_path,
-            lambda key: node_connections[key],
+            request_nodes,
         )
 
         finder2 = AllKnowing2(
@@ -180,7 +261,7 @@ def main():
             SLEEP_TIME,
             redraw,
             draw_path,
-            lambda key: node_connections[key],
+            request_nodes,
         )
 
         def calc(func: Callable, color):

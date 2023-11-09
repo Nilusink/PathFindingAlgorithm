@@ -196,7 +196,7 @@ class AllKnowing:
 
     def __init__(
             self,
-            node_connections: dict[Vec2, list],
+            node_connections: dict[int, list],
             visible_nodes: list[Vec2],
             sleep_time: float,
             redraw_func: Callable,
@@ -282,7 +282,12 @@ class AllKnowing:
                     "connections": self._connection_requester(node)
                 }
 
-    def request_all(self, to_append: dict, origin: Vec2, ignore: list[Vec2] = ..., n=0) -> None:
+    def request_all(
+            self,
+            to_append: dict,
+            origin: Vec2,
+            ignore: list[Vec2] = ..., n=0
+    ) -> None:
         """
         request all possible node connections
         """
@@ -321,7 +326,7 @@ class AllKnowing2:
 
     def __init__(
             self,
-            node_connections: dict[Vec2, list],
+            node_connections: dict[int, list],
             visible_nodes: list[Vec2],
             sleep_time: float,
             redraw_func: Callable,
