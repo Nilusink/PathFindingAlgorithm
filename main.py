@@ -16,12 +16,12 @@ from path_finders import AllKnowing, AllKnowing2
 # settings
 WIDTH: int = 2560
 HEIGHT: int = 1440
-NODE_RANGE: float = 150
-NUMBER_NODES: int = 500
-DRAW_ALL_CONNECTIONS: bool = True
+NODE_RANGE: float = 200
+NUMBER_NODES: int = 200
+DRAW_ALL_CONNECTIONS: bool = False
 WRITE_DATA: bool = True
 SLEEP_TIME: float = .0
-LOOP: bool = False
+LOOP: bool = True
 THREADS: int = 100
 
 
@@ -113,7 +113,7 @@ def main():
 
         # choose two nodes that need to be connected
         to_connect: list[Vec2] = sample(nodes, 2)
-        visible_nodes: list[Vec2] = to_connect.copy()
+        visible_nodes: list[Vec2] = [to_connect[0]]
 
         # calculate paths
         paths: list[set[Vec2, Vec2]] = []
@@ -124,30 +124,51 @@ def main():
         futures: list = []
 
         # start generation threads
-        for n_thread in range(THREADS - 1):
-            start = per_thread * n_thread
-            end = per_thread * (n_thread + 1)
-            if end - start < 1:
-                continue
+        # for n_thread in range(THREADS - 1):
+        #     start = per_thread * n_thread
+        #     end = per_thread * (n_thread + 1)
+        #     if end - start < 1:
+        #         continue
+        #
+        #     futures.append(pool.submit(
+        #         connections_for_nodes,
+        #         nodes[start:end],
+        #         nodes
+        #     ))
+        #
+        # # last thread per_thread + rest
+        # futures.append(pool.submit(
+        #     connections_for_nodes,
+        #     nodes[per_thread * (THREADS-1):],
+        #     nodes
+        # ))
+        #
+        # # wait for threads
+        # for f in futures:
+        #     n, p = f.result()
+        #     node_connections.update(n)
+        #     paths.extend(p)
+        node_connections: dict[int, list] = {}
+        paths: list[set[Vec2, Vec2]] = []
 
-            futures.append(pool.submit(
-                connections_for_nodes,
-                nodes[start:end],
-                nodes
-            ))
+        for node in nodes:
+            in_range: list[Vec2] = []
 
-        # last thread per_thread + rest
-        futures.append(pool.submit(
-            connections_for_nodes,
-            nodes[per_thread * (THREADS-1):],
-            nodes
-        ))
+            # get all nodes in range
+            for other_node in nodes:
+                if not other_node == node:
+                    # check if node is in range
+                    if (node - other_node).length <= NODE_RANGE:
+                        in_range.append(other_node)
 
-        # wait for threads
-        for f in futures:
-            n, p = f.result()
-            node_connections.update(n)
-            paths.extend(p)
+            node_connections[hash(node)] = in_range
+
+            # append to paths
+            for other_node in in_range:
+                pair: set[Vec2, Vec2] = {node, other_node}
+
+                if pair not in paths:
+                    paths.append(pair)
 
         print(f"connections took {time.perf_counter() - s}s")
 
